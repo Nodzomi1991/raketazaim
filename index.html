@@ -100,11 +100,11 @@
         let score = 0;
         let gameOver = false;
 
-        // Наклон ракеты
+        // Наклон НОСА ракеты
         let rocketTilt = 0;           // текущий угол
-        let targetTilt = 0;           // целевой угол
-        const maxTilt = 0.2;         // макс. наклон (в радианах ≈ 8.5°)
-        const tiltSpeed = 0.1;        // скорость изменения угла
+        let targetTilt = 0;           // желаемый угол
+        const maxTilt = 0.2;          // макс. угол ≈ 11.5°
+        const returnSpeed = 0.08;     // плавное возвращение
 
         // Управление: touch
         let touchStartX = null;
@@ -121,27 +121,27 @@
             const touch = e.touches[0];
             const dx = touch.clientX - touchStartX;
 
-            // 🔥 Увеличенная чувствительность и плавность
-            const speed = dx * 1.0; // было 0.5 → теперь 1.0 (очень отзывчиво)
+            // Чувствительность управления
+            const speed = dx * 1.0;
             rocket.x += speed;
-
-            // Ограничение по краям
             rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
 
-            // Целевой наклон: влево — наклон вправо, вправо — влево
+            // 🚀 НАКЛОН НОСА В СТОРОНУ ДВИЖЕНИЯ
             if (speed < 0) {
-                targetTilt = maxTilt;   // наклон вправо
+                // Двигаемся влево → нос влево (поворот против часовой → отрицательный угол)
+                targetTilt = -maxTilt;
             } else if (speed > 0) {
-                targetTilt = -maxTilt;  // наклон влево
+                // Двигаемся вправо → нос вправо (по часовой → положительный угол)
+                targetTilt = maxTilt;
             }
+            // Если нет движения — targetTilt остаётся 0
 
             touchStartX = touch.clientX;
         }, { passive: false });
 
         canvas.addEventListener('touchend', () => {
             touchStartX = null;
-            // При отпускании — возвращаем ракету в вертикальное положение
-            targetTilt = 0;
+            targetTilt = 0; // при отпускании — возвращаем нос в центр
         });
 
         // Загрузка изображений
@@ -157,24 +157,23 @@
         const starImg = new Image();
         starImg.src = "stars.png";
 
-        // Отрисовка ракеты с наклоном
+        // Отрисовка ракеты с наклоном НОСА
         function drawRocket() {
             // Плавное изменение угла
-            if (rocketTilt < targetTilt) {
-                rocketTilt += tiltSpeed;
-                if (rocketTilt > targetTilt) rocketTilt = targetTilt;
-            } else if (rocketTilt > targetTilt) {
-                rocketTilt -= tiltSpeed;
-                if (rocketTilt < targetTilt) rocketTilt = targetTilt;
+            if (Math.abs(targetTilt - rocketTilt) > 0.01) {
+                if (rocketTilt < targetTilt) {
+                    rocketTilt += returnSpeed;
+                } else {
+                    rocketTilt -= returnSpeed;
+                }
             }
 
-            // Центр ракеты
             const cx = rocket.x + rocket.width / 2;
             const cy = rocket.y + rocket.height / 2;
 
             ctx.save();
             ctx.translate(cx, cy);
-            ctx.rotate(rocketTilt);
+            ctx.rotate(rocketTilt); // нос поворачивается в сторону движения
             ctx.translate(-cx, -cy);
             ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
             ctx.restore();
