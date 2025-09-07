@@ -97,14 +97,15 @@
         let rocket = { x: 180, y: 500, width: 40, height: 60 };
         let stars = [];
         let meteors = [];
+        let particles = []; // частицы дыма
         let score = 0;
         let gameOver = false;
 
-        // Наклон НОСА ракеты
-        let rocketTilt = 0;           // текущий угол
-        let targetTilt = 0;           // желаемый угол
-        const maxTilt = 0.2;          // макс. угол ≈ 11.5°
-        const returnSpeed = 0.08;     // плавное возвращение
+        // Наклон носа
+        let rocketTilt = 0;
+        let targetTilt = 0;
+        const maxTilt = 0.2;
+        const returnSpeed = 0.08;
 
         // Управление: touch
         let touchStartX = null;
@@ -121,27 +122,23 @@
             const touch = e.touches[0];
             const dx = touch.clientX - touchStartX;
 
-            // Чувствительность управления
             const speed = dx * 1.0;
             rocket.x += speed;
             rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
 
-            // 🚀 НАКЛОН НОСА В СТОРОНУ ДВИЖЕНИЯ
+            // Наклон носа
             if (speed < 0) {
-                // Двигаемся влево → нос влево (поворот против часовой → отрицательный угол)
                 targetTilt = -maxTilt;
             } else if (speed > 0) {
-                // Двигаемся вправо → нос вправо (по часовой → положительный угол)
                 targetTilt = maxTilt;
             }
-            // Если нет движения — targetTilt остаётся 0
 
             touchStartX = touch.clientX;
         }, { passive: false });
 
         canvas.addEventListener('touchend', () => {
             touchStartX = null;
-            targetTilt = 0; // при отпускании — возвращаем нос в центр
+            targetTilt = 0;
         });
 
         // Загрузка изображений
@@ -157,15 +154,51 @@
         const starImg = new Image();
         starImg.src = "stars.png";
 
-        // Отрисовка ракеты с наклоном НОСА
-        function drawRocket() {
-            // Плавное изменение угла
-            if (Math.abs(targetTilt - rocketTilt) > 0.01) {
-                if (rocketTilt < targetTilt) {
-                    rocketTilt += returnSpeed;
-                } else {
-                    rocketTilt -= returnSpeed;
+        // Создание частицы дыма (из сопла)
+        function createParticle() {
+            const cx = rocket.x + rocket.width / 2;
+            const cy = rocket.y + rocket.height; // сопло — низ ракеты
+            return {
+                x: cx + (Math.random() - 0.5) * 20, // немного разброс
+                y: cy,
+                vx: (Math.random() - 0.5) * 1,
+                vy: 1 + Math.random() * 2,
+                life: 30 + Math.random() * 20,
+                size: 2 + Math.random() * 3,
+                alpha: 1
+            };
+        }
+
+        // Отрисовка частиц
+        function drawParticles() {
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                p.alpha = p.life / 50;
+                p.size *= 0.96;
+
+                if (p.life <= 0 || p.size < 0.3) {
+                    particles.splice(i, 1);
+                    return;
                 }
+
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = '#888'; // серый дым
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Отрисовка ракеты с наклоном
+        function drawRocket() {
+            // Плавный наклон
+            if (Math.abs(targetTilt - rocketTilt) > 0.01) {
+                rocketTilt += (targetTilt - rocketTilt) * 0.2;
+            } else {
+                rocketTilt = targetTilt;
             }
 
             const cx = rocket.x + rocket.width / 2;
@@ -173,10 +206,17 @@
 
             ctx.save();
             ctx.translate(cx, cy);
-            ctx.rotate(rocketTilt); // нос поворачивается в сторону движения
+            ctx.rotate(rocketTilt);
             ctx.translate(-cx, -cy);
             ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
             ctx.restore();
+
+            // Генерация дыма только при движении
+            if (Math.abs(targetTilt) > 0.05 && !gameOver) {
+                if (Math.random() < 0.8) {
+                    particles.push(createParticle());
+                }
+            }
         }
 
         // Создание звёзд и метеоритов
@@ -217,6 +257,10 @@
                     meteor.y < rocket.y + rocket.height &&
                     meteor.y + size > rocket.y
                 ) {
+                    // 🔊 Вибрация при столкновении
+                    if (navigator.vibrate && !gameOver) {
+                        navigator.vibrate([100]); // короткая вспышка
+                    }
                     endGame();
                 }
             });
@@ -262,6 +306,7 @@
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
             drawRocket();
+            drawParticles(); // дым
             drawStars();
             drawMeteors();
 
@@ -293,6 +338,7 @@
             rocket = { x: canvas.width / 2 - 20, y: 500, width: 40, height: 60 };
             stars = [];
             meteors = [];
+            particles = [];
             score = 0;
             gameOver = false;
             rocketTilt = 0;
