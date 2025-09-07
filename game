@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>🚀 Космическая Ракета</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #000428, #004e92);
+            color: #fff;
+            font-family: 'Orbitron', 'Arial', sans-serif;
+            text-align: center;
+            overflow: hidden;
+            height: 100vh;
+            touch-action: none; /* Отключаем прокрутку */
+        }
+
+        h1 {
+            font-size: 1.8em;
+            text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+            margin: 10px 0;
+            letter-spacing: 1px;
+        }
+
+        #score {
+            font-size: 1.3em;
+            color: #0f0;
+            text-shadow: 0 0 5px #0f0;
+            margin: 10px;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+        }
+
+        #status {
+            font-size: 1.5em;
+            color: #f00;
+            font-weight: bold;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 20;
+            background: rgba(0,0,0,0.7);
+            padding: 20px 30px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border: 2px solid #00ffff;
+            border-radius: 10px;
+            box-shadow: 0 0 20px #00ffff, inset 0 0 10px rgba(0, 255, 255, 0.3);
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
+    </style>
+</head>
+<body>
+
+    <h1>🚀 Космическая Ракета</h1>
+    <p id="score">Очки: 0</p>
+    <canvas id="gameCanvas"></canvas>
+    <div id="status">💥 Вы врезались!</div>
+
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        // Инициализация Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Раскрыть на весь экран
+        tg.ready(); // Готово к работе
+
+        // Настройка canvas под размер экрана
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // Адаптация размера canvas
+        function resizeCanvas() {
+            const width = Math.min(400, window.innerWidth - 20);
+            const height = Math.min(600, window.innerHeight - 60);
+            canvas.width = width;
+            canvas.height = height;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Элементы интерфейса
+        const scoreElement = document.getElementById("score");
+        const statusElement = document.getElementById("status");
+
+        // Объекты игры
+        let rocket = { x: 180, y: 500, width: 40, height: 60 };
+        let stars = [];
+        let meteors = [];
+        let score = 0;
+        let gameOver = false;
+
+        // Загрузка изображений
+        const bgImg = new Image();
+        bgImg.src = "background.png";
+
+        const rocketImg = new Image();
+        rocketImg.src = "rocket.png";
+
+        const meteorImg = new Image();
+        meteorImg.src = "meteor.png";
+
+        const starImg = new Image();
+        starImg.src = "stars.png";
+
+        // Управление: touch (сенсор)
+        let touchStartX = null;
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!touchStartX || gameOver) return;
+            const touch = e.touches[0];
+            const dx = touch.clientX - touchStartX;
+
+            // Плавное движение
+            rocket.x += dx * 0.5;
+            rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
+
+            touchStartX = touch.clientX;
+        }, { passive: false });
+
+        // Альтернатива: управление по клику/касанию левой и правой части экрана
+        canvas.addEventListener('touchend', () => {
+            touchStartX = null;
+        });
+
+        // Отрисовка ракеты
+        function drawRocket() {
+            ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
+        }
+
+        // Создание звёзд и метеоритов
+        function createStarOrMeteor() {
+            if (Math.random() < 0.7) {
+                stars.push({
+                    x: Math.random() * (canvas.width - 30),
+                    y: -20,
+                    size: 25 + Math.random() * 6,
+                });
+            } else {
+                meteors.push({
+                    x: Math.random() * (canvas.width - 30),
+                    y: -20,
+                    size: 15 + Math.random() * 10,
+                    angle: 0
+                });
+            }
+        }
+
+        // Отрисовка метеоритов
+        function drawMeteors() {
+            meteors.forEach((meteor, i) => {
+                meteor.y += 3;
+                meteor.angle += 0.1;
+
+                const size = 40;
+                ctx.save();
+                ctx.translate(meteor.x + size / 2, meteor.y + size / 2);
+                ctx.rotate(meteor.angle);
+                ctx.translate(-size / 2, -size / 2);
+                ctx.drawImage(meteorImg, 0, 0, size, size);
+                ctx.restore();
+
+                // Проверка столкновения
+                if (
+                    meteor.x < rocket.x + rocket.width &&
+                    meteor.x + size > rocket.x &&
+                    meteor.y < rocket.y + rocket.height &&
+                    meteor.y + size > rocket.y
+                ) {
+                    endGame();
+                }
+            });
+
+            // Удаляем ушедшие за экран
+            meteors = meteors.filter(m => m.y < canvas.height);
+        }
+
+        // Отрисовка звёзд
+        function drawStars() {
+            stars.forEach((star, i) => {
+                star.y += 4;
+                const size = star.size;
+
+                const now = Date.now();
+                const flicker = 0.7 + 0.3 * Math.sin(now * 0.007 + star.x * 0.1);
+                ctx.globalAlpha = flicker;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `rgba(255, 255, 100, ${flicker})`;
+                ctx.drawImage(starImg, star.x, star.y, size, size);
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1.0;
+
+                // Проверка сбора звезды
+                if (
+                    star.x < rocket.x + rocket.width &&
+                    star.x + size > rocket.x &&
+                    star.y < rocket.y + rocket.height &&
+                    star.y + size > rocket.y
+                ) {
+                    stars.splice(i, 1);
+                    score++;
+                    scoreElement.innerText = "Очки: " + score;
+                }
+            });
+
+            stars = stars.filter(s => s.y < canvas.height);
+        }
+
+        // Основной цикл
+        function update() {
+            if (gameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+            drawRocket();
+            drawStars();
+            drawMeteors();
+
+            requestAnimationFrame(update);
+        }
+
+        // Конец игры
+        function endGame() {
+            gameOver = true;
+            statusElement.style.display = "block";
+
+            // Отправка результата в Telegram
+            if (tg.isVersionAtLeast("6.1")) {
+                tg.showPopup({
+                    title: "Игра окончена",
+                    message: `Вы набрали ${score} очков!`,
+                    buttons: [{ type: "default", text: "Начать снова" }]
+                }, () => {
+                    startGame();
+                });
+            } else {
+                // Простой рестарт
+                setTimeout(() => {
+                    if (confirm(`Игра окончена! Очки: ${score}\nХочешь начать снова?`)) {
+                        startGame();
+                    }
+                }, 500);
+            }
+        }
+
+        // Начало игры
+        function startGame() {
+            rocket = { x: canvas.width / 2 - 20, y: 500, width: 40, height: 60 };
+            stars = [];
+            meteors = [];
+            score = 0;
+            gameOver = false;
+            scoreElement.innerText = "Очки: 0";
+            statusElement.style.display = "none";
+            update();
+        }
+
+        // Генерация объектов
+        setInterval(() => {
+            if (!gameOver) createStarOrMeteor();
+        }, 500);
+
+        // Автозапуск игры после загрузки всех изображений
+        let loadedImages = 0;
+        const totalImages = 4;
+        function imageLoaded() {
+            loadedImages++;
+            if (loadedImages === totalImages) {
+                startGame(); // Стартуем, когда всё загружено
+            }
+        }
+
+        bgImg.onload = imageLoaded;
+        rocketImg.onload = imageLoaded;
+        meteorImg.onload = imageLoaded;
+        starImg.onload = imageLoaded;
+
+        // Если изображения уже в кеше
+        [bgImg, rocketImg, meteorImg, starImg].forEach(img => {
+            if (img.complete && !img.onload) imageLoaded();
+        });
+    </script>
+</body>
+</html>
