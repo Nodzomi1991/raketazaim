@@ -134,43 +134,10 @@
         let gameOver = false;
 
         // Наклон ракеты
-        let rocketTilt = 0;
-        let targetTilt = 0;
-        const tiltStrength = 0.15;
-        const tiltSpeed = 0.1;
-
-        // Ускорение при движении
-        let moveTime = 0; // время непрерывного движения
-        const maxSpeedFactor = 2.0; // макс. ускорение
-
-        // Частицы (огонь из сопла)
-        let particles = [];
-        function createParticle() {
-            return {
-                x: rocket.x + rocket.width / 2,
-                y: rocket.y + rocket.height,
-                vx: (Math.random() - 0.5) * 2,
-                vy: 2 + Math.random() * 3,
-                life: 30 + Math.random() * 20,
-                maxLife: 50,
-                size: 2 + Math.random() * 4
-            };
-        }
-
-        // Параллакс-звёзды (фон)
-        let bgStars = [];
-        function createBgStar() {
-            return {
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
-                size: 0.5 + Math.random() * 1.5,
-                speed: 0.5 + Math.random() * 1.5
-            };
-        }
-        // Инициализация фоновых звёзд
-        for (let i = 0; i < 100; i++) {
-            bgStars.push(createBgStar());
-        }
+        let rocketTilt = 0;         // текущий угол наклона (в радианах)
+        let targetTilt = 0;         // желаемый угол
+        const tiltStrength = 0.15;  // максимальный наклон (в радианах)
+        const tiltSpeed = 0.1;      // скорость возврата к вертикали
 
         // Загрузка изображений
         const bgImg = new Image();
@@ -192,7 +159,6 @@
             e.preventDefault();
             const touch = e.touches[0];
             touchStartX = touch.clientX;
-            moveTime = 0; // сброс при старте
         }, { passive: false });
 
         canvas.addEventListener('touchmove', (e) => {
@@ -201,32 +167,34 @@
             const touch = e.touches[0];
             const dx = touch.clientX - touchStartX;
 
-            // Ускорение при длительном движении
-            moveTime += 16; // ~60 FPS
-            const speedFactor = 1 + (moveTime / 3000) * (maxSpeedFactor - 1); // плавное ускорение
-            const speed = dx * 0.8 * speedFactor;
-
+            // Увеличенная чувствительность
+            const speed = dx * 0.8; // было 0.5 — теперь 0.8
             rocket.x += speed;
 
+            // Ограничение по краям
             rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
 
-            // Наклон
-            if (speed < 0) targetTilt = tiltStrength;
-            else if (speed > 0) targetTilt = -tiltStrength;
-            else targetTilt = 0;
+            // Целевой наклон: влево — наклон влево, вправо — вправо
+            if (speed < 0) {
+                targetTilt = tiltStrength;  // наклон вправо при движении влево (визуально — как в самолётах)
+            } else if (speed > 0) {
+                targetTilt = -tiltStrength; // наклон влево при движении вправо
+            } else {
+                targetTilt = 0;
+            }
 
             touchStartX = touch.clientX;
         }, { passive: false });
 
         canvas.addEventListener('touchend', () => {
             touchStartX = null;
+            // При отпускании — плавно возвращаем ракету в вертикальное положение
             targetTilt = 0;
-            moveTime = 0; // сброс ускорения
         });
 
         // Отрисовка ракеты с наклоном
         function drawRocket() {
-            // Плавный наклон
+            // Плавное изменение наклона
             if (rocketTilt < targetTilt) {
                 rocketTilt += tiltSpeed;
                 if (rocketTilt > targetTilt) rocketTilt = targetTilt;
@@ -240,54 +208,10 @@
 
             ctx.save();
             ctx.translate(cx, cy);
-            ctx.rotate(rocketTilt);
+            ctx.rotate(rocketTilt); // наклон
             ctx.translate(-cx, -cy);
             ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
             ctx.restore();
-
-            // Генерация частиц (сопло)
-            if (Math.random() < 10) {
-                particles.push(createParticle());
-            }
-        }
-
-        // Отрисовка частиц
-        function drawParticles() {
-            particles.forEach((p, i) => {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life--;
-                p.size *= 0.97;
-
-                if (p.life <= 0 || p.size < 0.5) {
-                    particles.splice(i, 1);
-                    return;
-                }
-
-                ctx.globalAlpha = p.life / p.maxLife;
-                ctx.fillStyle = `hsl(${20 + Math.random() * 20}, 100%, 60%)`; // оранжевый
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
-            });
-        }
-
-        // Отрисовка фоновых звёзд (параллакс)
-        function drawBgStars() {
-            bgStars.forEach(star => {
-                star.y += star.speed;
-                if (star.y > canvas.height) {
-                    star.y = 0;
-                    star.x = Math.random() * canvas.width;
-                }
-                ctx.globalAlpha = 0.6 + Math.random() * 0.4;
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
-            ctx.globalAlpha = 1.0;
         }
 
         // Создание звёзд и метеоритов
@@ -328,10 +252,6 @@
                     meteor.y < rocket.y + rocket.height &&
                     meteor.y + size > rocket.y
                 ) {
-                    // Вибрация при столкновении
-                    if (navigator.vibrate) {
-                        navigator.vibrate([100, 50, 100]); // короткая вспышка
-                    }
                     endGame();
                 }
             });
@@ -379,11 +299,9 @@
             if (gameOver) return;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawBgStars(); // фоновые звёзды
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
             drawRocket();
-            drawParticles();
             drawStars();
             drawMeteors();
 
@@ -416,12 +334,10 @@
             rocket = { x: canvas.width / 2 - 20, y: 500, width: 40, height: 60 };
             stars = [];
             meteors = [];
-            particles = [];
             score = 0;
             gameOver = false;
             rocketTilt = 0;
             targetTilt = 0;
-            moveTime = 0;
             scoreElement.innerText = "Очки: 0";
             statusElement.style.display = "none";
 
