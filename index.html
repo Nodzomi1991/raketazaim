@@ -101,10 +101,11 @@
 
         // Настройка звука
         collectSound.volume = 0.6;
-        bgMusic.volume = 0.4;
+        bgMusic.volume = 0.4; // Приглушим фоновую музыку
+
         let soundUnlocked = false;
 
-        // Разблокировка звука
+        // Разблокировка звука при первом касании
         function unlockSound() {
             if (soundUnlocked) return;
 
@@ -113,11 +114,16 @@
                 collectSound.play()
             ]).then(() => {
                 soundUnlocked = true;
+                console.log("Звук разблокирован!");
+                // Останавливаем collectSound, если он запустился случайно
                 collectSound.pause();
                 collectSound.currentTime = 0;
+                // Начинаем фоновую музыку
                 bgMusic.currentTime = 0;
-                bgMusic.play().catch(() => {});
-            }).catch(() => {});
+                bgMusic.play().catch(e => console.log("Ошибка музыки:", e));
+            }).catch(err => {
+                console.log("Звук пока не разрешён:", err);
+            });
 
             canvas.removeEventListener('touchstart', unlockSound);
             canvas.removeEventListener('click', unlockSound);
@@ -132,12 +138,6 @@
         let meteors = [];
         let score = 0;
         let gameOver = false;
-
-        // Наклон ракеты
-        let rocketTilt = 0;         // текущий угол наклона (в радианах)
-        let targetTilt = 0;         // желаемый угол
-        const tiltStrength = 0.15;  // максимальный наклон (в радианах)
-        const tiltSpeed = 0.1;      // скорость возврата к вертикали
 
         // Загрузка изображений
         const bgImg = new Image();
@@ -167,51 +167,19 @@
             const touch = e.touches[0];
             const dx = touch.clientX - touchStartX;
 
-            // Увеличенная чувствительность
-            const speed = dx * 0.8; // было 0.5 — теперь 0.8
-            rocket.x += speed;
-
-            // Ограничение по краям
+            rocket.x += dx * 0.5;
             rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
-
-            // Целевой наклон: влево — наклон влево, вправо — вправо
-            if (speed < 0) {
-                targetTilt = tiltStrength;  // наклон вправо при движении влево (визуально — как в самолётах)
-            } else if (speed > 0) {
-                targetTilt = -tiltStrength; // наклон влево при движении вправо
-            } else {
-                targetTilt = 0;
-            }
 
             touchStartX = touch.clientX;
         }, { passive: false });
 
         canvas.addEventListener('touchend', () => {
             touchStartX = null;
-            // При отпускании — плавно возвращаем ракету в вертикальное положение
-            targetTilt = 0;
         });
 
-        // Отрисовка ракеты с наклоном
+        // Отрисовка ракеты
         function drawRocket() {
-            // Плавное изменение наклона
-            if (rocketTilt < targetTilt) {
-                rocketTilt += tiltSpeed;
-                if (rocketTilt > targetTilt) rocketTilt = targetTilt;
-            } else if (rocketTilt > targetTilt) {
-                rocketTilt -= tiltSpeed;
-                if (rocketTilt < targetTilt) rocketTilt = targetTilt;
-            }
-
-            const cx = rocket.x + rocket.width / 2;
-            const cy = rocket.y + rocket.height / 2;
-
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(rocketTilt); // наклон
-            ctx.translate(-cx, -cy);
             ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
-            ctx.restore();
         }
 
         // Создание звёзд и метеоритов
@@ -274,6 +242,7 @@
                 ctx.shadowBlur = 0;
                 ctx.globalAlpha = 1.0;
 
+                // Проверка сбора звезды
                 if (
                     star.x < rocket.x + rocket.width &&
                     star.x + size > rocket.x &&
@@ -286,7 +255,7 @@
 
                     if (soundUnlocked) {
                         collectSound.currentTime = 0;
-                        collectSound.play().catch(() => {});
+                        collectSound.play().catch(e => console.log("Ошибка звука сбора:", e));
                     }
                 }
             });
@@ -312,14 +281,20 @@
         function endGame() {
             gameOver = true;
             statusElement.style.display = "block";
-            if (soundUnlocked) bgMusic.pause();
+
+            // Останавливаем музыку при проигрыше
+            if (soundUnlocked) {
+                bgMusic.pause();
+            }
 
             if (tg.isVersionAtLeast("6.1")) {
                 tg.showPopup({
                     title: "Игра окончена",
                     message: `Вы набрали ${score} очков!`,
                     buttons: [{ type: "default", text: "Начать снова" }]
-                }, () => startGame());
+                }, () => {
+                    startGame();
+                });
             } else {
                 setTimeout(() => {
                     if (confirm(`Игра окончена! Очки: ${score}\nХочешь начать снова?`)) {
@@ -336,14 +311,13 @@
             meteors = [];
             score = 0;
             gameOver = false;
-            rocketTilt = 0;
-            targetTilt = 0;
             scoreElement.innerText = "Очки: 0";
             statusElement.style.display = "none";
 
-            if (soundUnlocked) {
+            // Возобновляем музыку при старте
+            if (soundUnlocked && !gameOver) {
                 bgMusic.currentTime = 0;
-                bgMusic.play().catch(() => {});
+                bgMusic.play().catch(e => console.log("Не удалось запустить музыку:", e));
             }
 
             update();
@@ -354,13 +328,18 @@
             if (!gameOver) createStarOrMeteor();
         }, 500);
 
-        // Загрузка изображений
+        // Автозапуск после загрузки ресурсов
         let loadedImages = 0;
         const totalImages = 4;
         function imageLoaded() {
             loadedImages++;
-            if (loadedImages === totalImages && soundUnlocked) {
-                startGame();
+            if (loadedImages === totalImages) {
+                // Стартуем игру, но музыку запустим только после касания
+                // Игра начнётся в unlockSound → startGame
+                // Но если звук уже разблокирован — стартуем сразу
+                if (soundUnlocked) {
+                    startGame();
+                }
             }
         }
 
