@@ -204,32 +204,33 @@
             });
         }
 
-        // 🌐 Отправка результата на сервер
-        async function submitScore(score) {
-            try {
-                await fetch('https://space-leaderboard.onrender.com/submit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, username, score })
-                });
-            } catch (err) {
-                console.warn("Не удалось отправить результат", err);
-            }
-        }
+     <!-- 📊 Загрузка рейтинга -->
+async function loadLeaderboard() {
+    try {
+        const res = await fetch('https://space-leaderboard-api.onrender.com/leaderboard');
+        const players = await res.json();
 
-        // 📊 Загрузка лидерборда
-        async function loadLeaderboard() {
-            try {
-                const res = await fetch('https://space-leaderboard.onrender.com/leaderboard');
-                const players = await res.json();
+        leaderboardElement.innerHTML = "<b>🏆 Топ-5:</b><br>" + players
+            .map((p, i) => `${i+1}. ${p.username || 'Аноним'}: <b>${p.score}</b>`)
+            .join("<br>");
+    } catch (err) {
+        leaderboardElement.innerText = "Рейтинг недоступен";
+        console.error("Ошибка загрузки рейтинга:", err);
+    }
+}
 
-                leaderboardElement.innerHTML = "<b>🏆 Топ-5:</b><br>" + players
-                    .map((p, i) => `${i+1}. ${p.username}: <b>${p.score}</b>`)
-                    .join("<br>");
-            } catch (err) {
-                leaderboardElement.innerText = "Рейтинг недоступен";
-            }
-        }
+// 🌐 Отправка результата
+async function submitScore(score) {
+    try {
+        await fetch('https://space-leaderboard-api.onrender.com/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, username, score })
+        });
+    } catch (err) {
+        console.warn("Не удалось отправить результат", err);
+    }
+}
 
         // Частицы (дым)
         function createParticle() {
