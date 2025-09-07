@@ -35,17 +35,6 @@
             z-index: 10;
         }
 
-        #bestScore {
-            font-size: 1.2em;
-            color: #ff0;
-            text-shadow: 0 0 5px #ff0;
-            margin: 10px;
-            position: absolute;
-            top: 40px;
-            left: 10px;
-            z-index: 10;
-        }
-
         #status {
             font-size: 1.5em;
             color: #f00;
@@ -76,7 +65,6 @@
 
     <h1>🚀 Космическая Ракета</h1>
     <p id="score">Очки: 0</p>
-    <p id="bestScore">Рекорд: 0</p>
     <canvas id="gameCanvas"></canvas>
     <div id="status">💥 Вы врезались!</div>
 
@@ -103,16 +91,14 @@
 
         // Элементы
         const scoreElement = document.getElementById("score");
-        const bestScoreElement = document.getElementById("bestScore");
         const statusElement = document.getElementById("status");
 
         // Объекты игры
         let rocket = { x: 180, y: 500, width: 40, height: 60 };
         let stars = [];
         let meteors = [];
-        let particles = [];
+        let particles = []; // частицы дыма
         let score = 0;
-        let bestScore = 0; // 🔐 Лучший счёт
         let gameOver = false;
 
         // Наклон носа
@@ -140,8 +126,12 @@
             rocket.x += speed;
             rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
 
-            if (speed < 0) targetTilt = -maxTilt;
-            else if (speed > 0) targetTilt = maxTilt;
+            // Наклон носа
+            if (speed < 0) {
+                targetTilt = -maxTilt;
+            } else if (speed > 0) {
+                targetTilt = maxTilt;
+            }
 
             touchStartX = touch.clientX;
         }, { passive: false });
@@ -164,35 +154,12 @@
         const starImg = new Image();
         starImg.src = "stars.png";
 
-        // 🔐 Загрузка рекорда из CloudStorage
-        function loadBestScore() {
-            tg.CloudStorage.getItem('bestScore', (err, value) => {
-                if (!err && value) {
-                    bestScore = parseInt(value, 10);
-                } else {
-                    bestScore = 0;
-                }
-                bestScoreElement.innerText = `Рекорд: ${bestScore}`;
-            });
-        }
-
-        // 🔐 Сохранение рекорда
-        function saveBestScore(newScore) {
-            tg.CloudStorage.setItem('bestScore', newScore.toString(), (err) => {
-                if (err) {
-                    console.error("Ошибка сохранения рекорда:", err);
-                } else {
-                    console.log("Рекорд сохранён:", newScore);
-                }
-            });
-        }
-
-        // Создание частицы дыма
+        // Создание частицы дыма (из сопла)
         function createParticle() {
             const cx = rocket.x + rocket.width / 2;
-            const cy = rocket.y + rocket.height;
+            const cy = rocket.y + rocket.height; // сопло — низ ракеты
             return {
-                x: cx + (Math.random() - 0.5) * 20,
+                x: cx + (Math.random() - 0.5) * 20, // немного разброс
                 y: cy,
                 vx: (Math.random() - 0.5) * 1,
                 vy: 1 + Math.random() * 2,
@@ -217,7 +184,7 @@
                 }
 
                 ctx.globalAlpha = p.alpha;
-                ctx.fillStyle = '#888';
+                ctx.fillStyle = '#888'; // серый дым
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
                 ctx.fill();
@@ -225,8 +192,9 @@
             ctx.globalAlpha = 1.0;
         }
 
-        // Отрисовка ракеты
+        // Отрисовка ракеты с наклоном
         function drawRocket() {
+            // Плавный наклон
             if (Math.abs(targetTilt - rocketTilt) > 0.01) {
                 rocketTilt += (targetTilt - rocketTilt) * 0.2;
             } else {
@@ -243,6 +211,7 @@
             ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
             ctx.restore();
 
+            // Генерация дыма только при движении
             if (Math.abs(targetTilt) > 0.05 && !gameOver) {
                 if (Math.random() < 0.8) {
                     particles.push(createParticle());
@@ -288,8 +257,9 @@
                     meteor.y < rocket.y + rocket.height &&
                     meteor.y + size > rocket.y
                 ) {
+                    // 🔊 Вибрация при столкновении
                     if (navigator.vibrate && !gameOver) {
-                        navigator.vibrate([100]);
+                        navigator.vibrate([100]); // короткая вспышка
                     }
                     endGame();
                 }
@@ -336,7 +306,7 @@
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
             drawRocket();
-            drawParticles();
+            drawParticles(); // дым
             drawStars();
             drawMeteors();
 
@@ -348,23 +318,17 @@
             gameOver = true;
             statusElement.style.display = "block";
 
-            // 🔐 Проверка и сохранение рекорда
-            if (score > bestScore) {
-                bestScore = score;
-                saveBestScore(bestScore);
-                bestScoreElement.innerText = `Рекорд: ${bestScore}`;
-            }
-
             if (tg.isVersionAtLeast("6.1")) {
                 tg.showPopup({
                     title: "Игра окончена",
-                    message: `Вы набрали ${score} очков!\nВаш рекорд: ${bestScore}`,
+                    message: `Вы набрали ${score} очков!`,
                     buttons: [{ type: "default", text: "Начать снова" }]
                 }, () => startGame());
             } else {
                 setTimeout(() => {
-                    alert(`Игра окончена! Очки: ${score}\nРекорд: ${bestScore}`);
-                    startGame();
+                    if (confirm(`Игра окончена! Очки: ${score}\nХочешь начать снова?`)) {
+                        startGame();
+                    }
                 }, 500);
             }
         }
@@ -395,7 +359,6 @@
         function imageLoaded() {
             loadedImages++;
             if (loadedImages === totalImages) {
-                loadBestScore(); // 🔐 Загружаем рекорд
                 startGame();
             }
         }
