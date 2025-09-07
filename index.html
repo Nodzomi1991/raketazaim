@@ -14,7 +14,7 @@
             text-align: center;
             overflow: hidden;
             height: 100vh;
-            touch-action: none;
+            touch-action: none; /* Отключаем прокрутку */
         }
 
         h1 {
@@ -68,22 +68,19 @@
     <canvas id="gameCanvas"></canvas>
     <div id="status">💥 Вы врезались!</div>
 
-    <!-- Аудио -->
-    <audio id="collectSound" src="stars.mp3" preload="auto"></audio>
-    <audio id="bgMusic" src="music.mp3" preload="auto" loop></audio>
-
     <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         // Инициализация Telegram WebApp
         const tg = window.Telegram.WebApp;
-        tg.expand();
-        tg.ready();
+        tg.expand(); // Раскрыть на весь экран
+        tg.ready(); // Готово к работе
 
-        // Настройка canvas
+        // Настройка canvas под размер экрана
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
+        // Адаптация размера canvas
         function resizeCanvas() {
             const width = Math.min(400, window.innerWidth - 20);
             const height = Math.min(600, window.innerHeight - 60);
@@ -93,38 +90,9 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Элементы
+        // Элементы интерфейса
         const scoreElement = document.getElementById("score");
         const statusElement = document.getElementById("status");
-        const collectSound = document.getElementById("collectSound");
-        const bgMusic = document.getElementById("bgMusic");
-
-        // Настройка звука
-        collectSound.volume = 0.6;
-        bgMusic.volume = 0.4;
-        let soundUnlocked = false;
-
-        // Разблокировка звука
-        function unlockSound() {
-            if (soundUnlocked) return;
-
-            Promise.all([
-                bgMusic.play(),
-                collectSound.play()
-            ]).then(() => {
-                soundUnlocked = true;
-                collectSound.pause();
-                collectSound.currentTime = 0;
-                bgMusic.currentTime = 0;
-                bgMusic.play().catch(() => {});
-            }).catch(() => {});
-
-            canvas.removeEventListener('touchstart', unlockSound);
-            canvas.removeEventListener('click', unlockSound);
-        }
-
-        canvas.addEventListener('touchstart', unlockSound, { passive: true });
-        canvas.addEventListener('click', unlockSound);
 
         // Объекты игры
         let rocket = { x: 180, y: 500, width: 40, height: 60 };
@@ -132,45 +100,6 @@
         let meteors = [];
         let score = 0;
         let gameOver = false;
-
-        // Наклон ракеты
-        let rocketTilt = 0;
-        let targetTilt = 0;
-        const tiltStrength = 0.15;
-        const tiltSpeed = 0.1;
-
-        // Ускорение при движении
-        let moveTime = 0; // время непрерывного движения
-        const maxSpeedFactor = 2.0; // макс. ускорение
-
-        // Частицы (огонь из сопла)
-        let particles = [];
-        function createParticle() {
-            return {
-                x: rocket.x + rocket.width / 2,
-                y: rocket.y + rocket.height,
-                vx: (Math.random() - 0.5) * 2,
-                vy: 2 + Math.random() * 3,
-                life: 30 + Math.random() * 20,
-                maxLife: 50,
-                size: 2 + Math.random() * 4
-            };
-        }
-
-        // Параллакс-звёзды (фон)
-        let bgStars = [];
-        function createBgStar() {
-            return {
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
-                size: 0.5 + Math.random() * 1.5,
-                speed: 0.5 + Math.random() * 1.5
-            };
-        }
-        // Инициализация фоновых звёзд
-        for (let i = 0; i < 100; i++) {
-            bgStars.push(createBgStar());
-        }
 
         // Загрузка изображений
         const bgImg = new Image();
@@ -185,14 +114,13 @@
         const starImg = new Image();
         starImg.src = "stars.png";
 
-        // Управление: touch
+        // Управление: touch (сенсор)
         let touchStartX = null;
 
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
             touchStartX = touch.clientX;
-            moveTime = 0; // сброс при старте
         }, { passive: false });
 
         canvas.addEventListener('touchmove', (e) => {
@@ -201,100 +129,21 @@
             const touch = e.touches[0];
             const dx = touch.clientX - touchStartX;
 
-            // Ускорение при длительном движении
-            moveTime += 16; // ~60 FPS
-            const speedFactor = 1 + (moveTime / 3000) * (maxSpeedFactor - 1); // плавное ускорение
-            const speed = dx * 0.8 * speedFactor;
-
-            rocket.x += speed;
-
+            // Плавное движение
+            rocket.x += dx * 0.5;
             rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
-
-            // Наклон
-            if (speed < 0) targetTilt = tiltStrength;
-            else if (speed > 0) targetTilt = -tiltStrength;
-            else targetTilt = 0;
 
             touchStartX = touch.clientX;
         }, { passive: false });
 
+        // Альтернатива: управление по клику/касанию левой и правой части экрана
         canvas.addEventListener('touchend', () => {
             touchStartX = null;
-            targetTilt = 0;
-            moveTime = 0; // сброс ускорения
         });
-function imageLoaded() {
-    loadedImages++;
-    console.log("Загружено изображений:", loadedImages);
-    if (loadedImages === totalImages && soundUnlocked) {
-        console.log("Все ресурсы загружены — стартуем игру!");
-        startGame();
-    }
-}
-        // Отрисовка ракеты с наклоном
+
+        // Отрисовка ракеты
         function drawRocket() {
-            // Плавный наклон
-            if (rocketTilt < targetTilt) {
-                rocketTilt += tiltSpeed;
-                if (rocketTilt > targetTilt) rocketTilt = targetTilt;
-            } else if (rocketTilt > targetTilt) {
-                rocketTilt -= tiltSpeed;
-                if (rocketTilt < targetTilt) rocketTilt = targetTilt;
-            }
-
-            const cx = rocket.x + rocket.width / 2;
-            const cy = rocket.y + rocket.height / 2;
-
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(rocketTilt);
-            ctx.translate(-cx, -cy);
             ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
-            ctx.restore();
-
-            // Генерация частиц (сопло)
-            if (Math.random() < 10) {
-                particles.push(createParticle());
-            }
-        }
-
-        // Отрисовка частиц
-        function drawParticles() {
-            particles.forEach((p, i) => {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life--;
-                p.size *= 0.97;
-
-                if (p.life <= 0 || p.size < 0.5) {
-                    particles.splice(i, 1);
-                    return;
-                }
-
-                ctx.globalAlpha = p.life / p.maxLife;
-                ctx.fillStyle = `hsl(${20 + Math.random() * 20}, 100%, 60%)`; // оранжевый
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.globalAlpha = 1.0;
-            });
-        }
-
-        // Отрисовка фоновых звёзд (параллакс)
-        function drawBgStars() {
-            bgStars.forEach(star => {
-                star.y += star.speed;
-                if (star.y > canvas.height) {
-                    star.y = 0;
-                    star.x = Math.random() * canvas.width;
-                }
-                ctx.globalAlpha = 0.6 + Math.random() * 0.4;
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
-            ctx.globalAlpha = 1.0;
         }
 
         // Создание звёзд и метеоритов
@@ -329,20 +178,18 @@ function imageLoaded() {
                 ctx.drawImage(meteorImg, 0, 0, size, size);
                 ctx.restore();
 
+                // Проверка столкновения
                 if (
                     meteor.x < rocket.x + rocket.width &&
                     meteor.x + size > rocket.x &&
                     meteor.y < rocket.y + rocket.height &&
                     meteor.y + size > rocket.y
                 ) {
-                    // Вибрация при столкновении
-                    if (navigator.vibrate) {
-                        navigator.vibrate([100, 50, 100]); // короткая вспышка
-                    }
                     endGame();
                 }
             });
 
+            // Удаляем ушедшие за экран
             meteors = meteors.filter(m => m.y < canvas.height);
         }
 
@@ -361,6 +208,7 @@ function imageLoaded() {
                 ctx.shadowBlur = 0;
                 ctx.globalAlpha = 1.0;
 
+                // Проверка сбора звезды
                 if (
                     star.x < rocket.x + rocket.width &&
                     star.x + size > rocket.x &&
@@ -370,11 +218,6 @@ function imageLoaded() {
                     stars.splice(i, 1);
                     score++;
                     scoreElement.innerText = "Очки: " + score;
-
-                    if (soundUnlocked) {
-                        collectSound.currentTime = 0;
-                        collectSound.play().catch(() => {});
-                    }
                 }
             });
 
@@ -386,11 +229,9 @@ function imageLoaded() {
             if (gameOver) return;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawBgStars(); // фоновые звёзды
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
             drawRocket();
-            drawParticles();
             drawStars();
             drawMeteors();
 
@@ -401,15 +242,18 @@ function imageLoaded() {
         function endGame() {
             gameOver = true;
             statusElement.style.display = "block";
-            if (soundUnlocked) bgMusic.pause();
 
+            // Отправка результата в Telegram
             if (tg.isVersionAtLeast("6.1")) {
                 tg.showPopup({
                     title: "Игра окончена",
                     message: `Вы набрали ${score} очков!`,
                     buttons: [{ type: "default", text: "Начать снова" }]
-                }, () => startGame());
+                }, () => {
+                    startGame();
+                });
             } else {
+                // Простой рестарт
                 setTimeout(() => {
                     if (confirm(`Игра окончена! Очки: ${score}\nХочешь начать снова?`)) {
                         startGame();
@@ -423,20 +267,10 @@ function imageLoaded() {
             rocket = { x: canvas.width / 2 - 20, y: 500, width: 40, height: 60 };
             stars = [];
             meteors = [];
-            particles = [];
             score = 0;
             gameOver = false;
-            rocketTilt = 0;
-            targetTilt = 0;
-            moveTime = 0;
             scoreElement.innerText = "Очки: 0";
             statusElement.style.display = "none";
-
-            if (soundUnlocked) {
-                bgMusic.currentTime = 0;
-                bgMusic.play().catch(() => {});
-            }
-
             update();
         }
 
@@ -445,13 +279,13 @@ function imageLoaded() {
             if (!gameOver) createStarOrMeteor();
         }, 500);
 
-        // Загрузка изображений
+        // Автозапуск игры после загрузки всех изображений
         let loadedImages = 0;
         const totalImages = 4;
         function imageLoaded() {
             loadedImages++;
-            if (loadedImages === totalImages && soundUnlocked) {
-                startGame();
+            if (loadedImages === totalImages) {
+                startGame(); // Стартуем, когда всё загружено
             }
         }
 
@@ -460,6 +294,7 @@ function imageLoaded() {
         meteorImg.onload = imageLoaded;
         starImg.onload = imageLoaded;
 
+        // Если изображения уже в кеше
         [bgImg, rocketImg, meteorImg, starImg].forEach(img => {
             if (img.complete && !img.onload) imageLoaded();
         });
