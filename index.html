@@ -4,268 +4,112 @@
 <meta charset="UTF-8">
 <title>Rocket Game</title>
 <style>
-body {
-margin: 0;
-overflow: hidden;
-background: black;
-display: flex;
-justify-content: center;
-align-items: center;
-}
-#gameCanvas {
-background: black;
-display: block;
-}
-#status {
-position: absolute;
-top: 20px;
-left: 50%;
-transform: translateX(-50%);
-font-size: 24px;
-color: white;
-display: none;
-}
-#score {
-position: absolute;
-top: 20px;
-left: 20px;
-font-size: 20px;
-color: white;
-}
+body { margin:0; overflow:hidden; background:black; }
+#gameCanvas { display:block; margin:auto; }
+#score { position:absolute; top:20px; left:20px; color:white; font-size:20px; }
 </style>
 </head>
 <body>
 <canvas id="gameCanvas" width="400" height="600"></canvas>
-<div id="status">Игра окончена</div>
 <div id="score">Очки: 0</div>
 
 <script>
-// ----------------- Константы -----------------
-const STAR_SPEED = 4;
-const SPAWN_INTERVAL = 500;
-const ROCKET_START_Y = 500;
-
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-
-const statusElement = document.getElementById("status");
 const scoreElement = document.getElementById("score");
 
-// ----------------- Классы объектов -----------------
-class Rocket {
-constructor(img) {
-this.img = img;
-this.x = canvas.width / 2 - 20;
-this.y = ROCKET_START_Y;
-this.width = 40;
-this.height = 60;
+const tg = window.Telegram.WebApp;
+tg.ready();
+
+let rocket = { x: 180, y: 500, width: 40, height: 60 };
+let stars = [], meteors = [], score = 0, gameOver = false;
+
+// Простейшая генерация объектов
+function spawnObject() {
+    const x = Math.random() * (canvas.width - 30);
+    if (Math.random() > 0.5) stars.push({x, y:0, size:20+Math.random()*20});
+    else meteors.push({x, y:0, size:20+Math.random()*20, speed:3+Math.random()*3});
 }
 
-draw() {
-ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
-}
+// Обновление и проверка столкновений
+function update() {
+    if (gameOver) return;
+
+    // Звёзды
+    for (let i=stars.length-1;i>=0;i--){
+        stars[i].y += 4;
+        if (stars[i].x < rocket.x + rocket.width && stars[i].x+stars[i].size>rocket.x &&
+            stars[i].y<rocket.y+rocket.height && stars[i].y+stars[i].size>rocket.y){
+            stars.splice(i,1);
+            score++; scoreElement.innerText="Очки: "+score;
+        }
+        else if (stars[i].y>canvas.height) stars.splice(i,1);
+    }
+
+    // Метеоры
+    for (let i=meteors.length-1;i>=0;i--){
+        meteors[i].y += meteors[i].speed;
+        if (meteors[i].x < rocket.x + rocket.width && meteors[i].x+meteors[i].size>rocket.x &&
+            meteors[i].y<rocket.y+rocket.height && meteors[i].y+meteors[i].size>rocket.y){
+            endGame();
+        }
+        else if (meteors[i].y>canvas.height) meteors.splice(i,1);
+    }
 }
 
-class Star {
-constructor(img, x, size) {
-this.img = img;
-this.x = x;
-this.y = 0;
-this.size = size;
+// Отрисовка (очень простой пример)
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="red"; ctx.fillRect(rocket.x,rocket.y,rocket.width,rocket.height);
+    ctx.fillStyle="yellow";
+    stars.forEach(s=>ctx.fillRect(s.x,s.y,s.size,s.size));
+    ctx.fillStyle="gray";
+    meteors.forEach(m=>ctx.fillRect(m.x,m.y,m.size,m.size));
 }
 
-update() {
-this.y += STAR_SPEED;
+function gameLoop() {
+    if (gameOver) return;
+    update(); draw();
+    requestAnimationFrame(gameLoop);
 }
 
-draw() {
-const now = Date.now();
-const flicker = 0.7 + 0.3 * Math.sin(now * 0.007 + this.x * 0.1);
-ctx.globalAlpha = flicker;
-ctx.shadowBlur = 15;
-ctx.shadowColor = `rgba(255, 255, 100, ${flicker})`;
-ctx.drawImage(this.img, this.x, this.y, this.size, this.size);
+// Начало игры
+function startGame() {
+    rocket = { x: 180, y: 500, width: 40, height: 60 };
+    stars = []; meteors = []; score=0; gameOver=false;
+    scoreElement.innerText="Очки: 0";
+    requestAnimationFrame(gameLoop);
 }
 
-collidesWith(rocket) {
-return (
-this.x < rocket.x + rocket.width &&
-this.x + this.size > rocket.x &&
-this.y < rocket.y + rocket.height &&
-this.y + this.size > rocket.y
-);
-}
-}
+// Завершение игры
+function endGame() {
+    gameOver = true;
 
-class Meteor {
-constructor(img, x, size, speed) {
-this.img = img;
-this.x = x;
-this.y = 0;
-this.size = size;
-this.speed = speed;
-}
+    // Отправка очков на сервер
+    fetch("https://your-server.com/score",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+            score: score,
+            userId: tg.initDataUnsafe.user.id,
+            chatId: tg.initDataUnsafe.chat?.id,
+            messageId: tg.initDataUnsafe.start_param
+        })
+    }).then(res=>res.json()).then(data=>{
+        console.log(data.ok ? "Результат отправлен!" : "Ошибка при отправке");
+    }).catch(err=>console.error(err));
 
-update() {
-this.y += this.speed;
-}
-
-draw() {
-ctx.drawImage(this.img, this.x, this.y, this.size, this.size);
+    tg.showPopup({
+        title:"Игра окончена",
+        message:`Вы набрали ${score} очков!`,
+        buttons:[{type:"default", text:"Начать снова"}]
+    }, ()=>startGame());
 }
 
-collidesWith(rocket) {
-return (
-this.x < rocket.x + rocket.width &&
-this.x + this.size > rocket.x &&
-this.y < rocket.y + rocket.height &&
-this.y + this.size > rocket.y
-);
-}
-}
+// Генерация объектов каждые 500 мс
+setInterval(()=>{if(!gameOver) spawnObject()},500);
 
-// ----------------- Класс Game -----------------
-class Game {
-constructor(images) {
-this.bgImg = images.bg;
-this.rocketImg = images.rocket;
-this.meteorImg = images.meteor;
-this.starImg = images.star;
-
-this.rocket = new Rocket(this.rocketImg);
-this.stars = [];
-this.meteors = [];
-this.score = 0;
-this.gameOver = false;
-
-this.lastFrame = 0;
-this.lastSpawn = 0;
-}
-
-start() {
-this.rocket = new Rocket(this.rocketImg);
-this.stars = [];
-this.meteors = [];
-this.score = 0;
-this.gameOver = false;
-statusElement.style.display = "none";
-scoreElement.innerText = "Очки: 0";
-
-this.lastFrame = performance.now();
-this.lastSpawn = this.lastFrame;
-requestAnimationFrame(this.loop.bind(this));
-}
-
-end() {
-this.gameOver = true;
-statusElement.style.display = "block";
-
-if (window.tg && tg.isVersionAtLeast("6.1")) {
-tg.showPopup({
-title: "Игра окончена",
-message: `Вы набрали ${this.score} очков!`,
-buttons: [{ type: "default", text: "Начать снова" }]
-}, () => this.start());
-} else {
-setTimeout(() => {
-if (confirm(`Игра окончена! Очки: ${this.score}\nХочешь начать снова?`)) {
-this.start();
-}
-}, 500);
-}
-}
-
-loop(timestamp) {
-if (this.gameOver) return;
-
-this.update(timestamp);
-this.draw();
-
-requestAnimationFrame(this.loop.bind(this));
-}
-
-update(timestamp) {
-const delta = timestamp - this.lastFrame;
-this.lastFrame = timestamp;
-
-if (timestamp - this.lastSpawn > SPAWN_INTERVAL) {
-this.spawnObject();
-this.lastSpawn = timestamp;
-}
-
-// Звёзды
-for (let i = this.stars.length - 1; i >= 0; i--) {
-const star = this.stars[i];
-star.update();
-if (star.collidesWith(this.rocket)) {
-this.stars.splice(i, 1);
-this.score++;
-scoreElement.innerText = "Очки: " + this.score;
-continue;
-}
-if (star.y > canvas.height) this.stars.splice(i, 1);
-}
-
-// Метеоры
-for (let i = this.meteors.length - 1; i >= 0; i--) {
-const meteor = this.meteors[i];
-meteor.update();
-if (meteor.collidesWith(this.rocket)) {
-if (navigator.vibrate && !this.gameOver) {
-try { navigator.vibrate([100]); } catch {}
-}
-this.end();
-}
-if (meteor.y > canvas.height) this.meteors.splice(i, 1);
-}
-}
-
-draw() {
-ctx.clearRect(0, 0, canvas.width, canvas.height);
-ctx.drawImage(this.bgImg, 0, 0, canvas.width, canvas.height);
-
-this.rocket.draw();
-this.stars.forEach(s => s.draw());
-this.meteors.forEach(m => m.draw());
-
-ctx.globalAlpha = 1.0;
-ctx.shadowBlur = 0;
-}
-
-spawnObject() {
-const isStar = Math.random() > 0.5;
-const x = Math.random() * (canvas.width - 30);
-const size = 20 + Math.random() * 20;
-
-if (isStar) {
-this.stars.push(new Star(this.starImg, x, size));
-} else {
-const speed = 3 + Math.random() * 3;
-this.meteors.push(new Meteor(this.meteorImg, x, size, speed));
-}
-}
-}
-
-// ----------------- Загрузка картинок -----------------
-function loadImages(sources) {
-return Promise.all(
-Object.entries(sources).map(([key, src]) => new Promise(resolve => {
-const img = new Image();
-img.onload = () => resolve([key, img]);
-img.src = src;
-}))
-).then(entries => Object.fromEntries(entries));
-}
-
-loadImages({
-bg: "bg.png",
-rocket: "rocket.png",
-meteor: "meteor.png",
-star: "star.png"
-}).then(images => {
-const game = new Game(images);
-game.start();
-});
+startGame();
 </script>
 </body>
 </html>
