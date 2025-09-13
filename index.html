@@ -2,144 +2,106 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Rocket Game</title>
+<title>Игра Telegram</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  body { margin:0; overflow:hidden; background:black; }
-  #gameCanvas { display:block; margin:auto; }
-  #score { position:absolute; top:20px; left:20px; color:white; font-size:20px; }
-  #leaderboard {
-    position:absolute; top:50px; right:20px;
-    color:white; background:rgba(0,0,0,0.5); padding:10px;
-    font-size:16px; max-width:150px;
-  }
-  #leaderboard ul { padding-left:20px; margin:0; }
+body {
+margin: 0;
+font-family: sans-serif;
+display: flex;
+flex-direction: column;
+justify-content: flex-start;
+align-items: center;
+height: 100vh;
+background: #f0f0f0;
+}
+#game-container {
+width: 100%;
+max-width: 600px;
+padding: 20px;
+text-align: center;
+background: white;
+box-shadow: 0 0 10px rgba(0,0,0,0.2);
+margin-top: 20px;
+border-radius: 10px;
+}
+table {
+width: 100%;
+border-collapse: collapse;
+margin-top: 20px;
+}
+th, td {
+padding: 8px;
+border: 1px solid #ccc;
+}
+th {
+background: #eee;
+}
+button {
+margin-top: 10px;
+padding: 10px 20px;
+font-size: 16px;
+}
 </style>
 </head>
 <body>
-<canvas id="gameCanvas" width="400" height="600"></canvas>
-<div id="score">Очки: 0</div>
-<div id="leaderboard">
-  🏆 Топ 5:
-  <ul id="topList"></ul>
+<div id="game-container">
+<h1>Игра Telegram</h1>
+<p>Нажми кнопку, чтобы сыграть!</p>
+<button id="play-btn">Сыграть</button>
+<table id="leaderboard">
+<thead>
+<tr>
+<th>Игрок</th>
+<th>Очки</th>
+</tr>
+</thead>
+<tbody>
+</tbody>
+</table>
 </div>
 
 <script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-const scoreElement = document.getElementById("score");
-const topList = document.getElementById("topList");
+if (typeof window.Telegram === "undefined" || !window.Telegram.WebApp) {
+document.body.innerHTML = "<h2>Эта игра работает только внутри мини-приложения Telegram.</h2>";
+throw new Error("Не в Telegram WebApp");
+}
 
-// Telegram WebApp
 const tg = window.Telegram.WebApp;
 tg.ready();
+tg.expand();
 
-let rocket, stars, meteors, score, gameOver;
+// Пример данных игроков (можно сохранять через backend или localStorage)
+let leaderboard = [
+{ name: "Игрок 1", score: 0 },
+{ name: "Игрок 2", score: 0 },
+{ name: "Игрок 3", score: 0 },
+];
 
-// ------------------ Классы ------------------
-class Rocket {
-    constructor() { this.x = 180; this.y = 500; this.width = 40; this.height = 60; }
-    draw() { ctx.fillStyle="red"; ctx.fillRect(this.x,this.y,this.width,this.height); }
+// Функция обновления таблицы
+function renderLeaderboard() {
+const tbody = document.querySelector("#leaderboard tbody");
+tbody.innerHTML = "";
+leaderboard.sort((a,b) => b.score - a.score);
+leaderboard.forEach(player => {
+const tr = document.createElement("tr");
+tr.innerHTML = `<td>${player.name}</td><td>${player.score}</td>`;
+tbody.appendChild(tr);
+});
 }
 
-class Star {
-    constructor() { this.x = Math.random()*(canvas.width-30); this.y=0; this.size=20+Math.random()*20; }
-    update() { this.y+=4; }
-    draw() { ctx.fillStyle="yellow"; ctx.fillRect(this.x,this.y,this.size,this.size); }
-    collides() { return this.x<rocket.x+rocket.width && this.x+this.size>rocket.x &&
-                     this.y<rocket.y+rocket.height && this.y+this.size>rocket.y; }
-}
+// Инициализация
+renderLeaderboard();
 
-class Meteor {
-    constructor() { this.x = Math.random()*(canvas.width-30); this.y=0; this.size=20+Math.random()*20; this.speed=3+Math.random()*3; }
-    update() { this.y+=this.speed; }
-    draw() { ctx.fillStyle="gray"; ctx.fillRect(this.x,this.y,this.size,this.size); }
-    collides() { return this.x<rocket.x+rocket.width && this.x+this.size>rocket.x &&
-                     this.y<rocket.y+rocket.height && this.y+this.size>rocket.y; }
-}
+// Логика игры (пример)
+document.getElementById("play-btn").addEventListener("click", () => {
+// Выбираем случайного игрока
+const randomIndex = Math.floor(Math.random() * leaderboard.length);
+const points = Math.floor(Math.random() * 10) + 1; // случайные очки
+leaderboard[randomIndex].score += points;
 
-// ------------------ Игра ------------------
-function spawnObjects() {
-    if(Math.random()>0.5) stars.push(new Star());
-    else meteors.push(new Meteor());
-}
-
-function update() {
-    if(gameOver) return;
-
-    stars.forEach((s,i)=>{ s.update(); if(s.collides()){ stars.splice(i,1); score++; scoreElement.innerText="Очки: "+score; } if(s.y>canvas.height) stars.splice(i,1); });
-    meteors.forEach((m,i)=>{ m.update(); if(m.collides()) endGame(); if(m.y>canvas.height) meteors.splice(i,1); });
-}
-
-function draw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    rocket.draw();
-    stars.forEach(s=>s.draw());
-    meteors.forEach(m=>m.draw());
-}
-
-function gameLoop() {
-    if(gameOver) return;
-    update(); draw();
-    requestAnimationFrame(gameLoop);
-}
-
-function startGame() {
-    rocket = new Rocket();
-    stars = [];
-    meteors = [];
-    score = 0;
-    gameOver = false;
-    scoreElement.innerText="Очки: 0";
-    requestAnimationFrame(gameLoop);
-}
-
-// ------------------ Отправка очков на сервер ------------------
-async function sendScore() {
-    try{
-        await fetch("https://your-server.com/score",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({
-                score: score,
-                userId: tg.initDataUnsafe.user.id,
-                chatId: tg.initDataUnsafe.chat?.id,
-                messageId: tg.initDataUnsafe.start_param
-            })
-        });
-    }catch(e){ console.error(e); }
-}
-
-// ------------------ Конец игры ------------------
-function endGame() {
-    gameOver = true;
-    sendScore();
-    tg.showPopup({ title:"Игра окончена", message:`Вы набрали ${score} очков!`,
-        buttons:[{type:"default", text:"Начать снова"}]}, ()=>startGame());
-}
-
-// ------------------ Обновление таблицы лидеров ------------------
-async function updateLeaderboard(){
-    if(!tg.initDataUnsafe.user.id) return;
-    try{
-        const res = await fetch(`https://your-server.com/top5?userId=${tg.initDataUnsafe.user.id}&chatId=${tg.initDataUnsafe.chat?.id}&messageId=${tg.initDataUnsafe.start_param}`);
-        const data = await res.json();
-        if(data.ok){
-            topList.innerHTML="";
-            data.top5.forEach((p,i)=>{
-                const li = document.createElement("li");
-                li.textContent=`${i+1}. ${p.name} — ${p.score}`;
-                topList.appendChild(li);
-            });
-        }
-    }catch(e){ console.error(e); }
-}
-
-// ------------------ Таймеры ------------------
-setInterval(()=>{if(!gameOver) spawnObjects()},500);
-setInterval(()=>{updateLeaderboard()},5000);
-
-// ------------------ Старт ------------------
-startGame();
+renderLeaderboard();
+});
 </script>
 </body>
 </html>
