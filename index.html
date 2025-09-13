@@ -1,376 +1,271 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>🚀 Космическая Ракета</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: linear-gradient(135deg, #000428, #004e92);
-            color: #fff;
-            font-family: 'Orbitron', 'Arial', sans-serif;
-            text-align: center;
-            overflow: hidden;
-            height: 100vh;
-            touch-action: none;
-        }
-
-        h1 {
-            font-size: 1.8em;
-            text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
-            margin: 10px 0;
-            letter-spacing: 1px;
-        }
-
-        #score {
-            font-size: 1.3em;
-            color: #0f0;
-            text-shadow: 0 0 5px #0f0;
-            margin: 10px;
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-        }
-
-        #status {
-            font-size: 1.5em;
-            color: #f00;
-            font-weight: bold;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 20;
-            background: rgba(0,0,0,0.7);
-            padding: 20px 30px;
-            border-radius: 10px;
-            display: none;
-        }
-
-        canvas {
-            display: block;
-            margin: 0 auto;
-            border: 2px solid #00ffff;
-            border-radius: 10px;
-            box-shadow: 0 0 20px #00ffff, inset 0 0 10px rgba(0, 255, 255, 0.3);
-        }
-
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
-    </style>
+<meta charset="UTF-8">
+<title>Rocket Game</title>
+<style>
+body {
+margin: 0;
+overflow: hidden;
+background: black;
+display: flex;
+justify-content: center;
+align-items: center;
+}
+#gameCanvas {
+background: black;
+display: block;
+}
+#status {
+position: absolute;
+top: 20px;
+left: 50%;
+transform: translateX(-50%);
+font-size: 24px;
+color: white;
+display: none;
+}
+#score {
+position: absolute;
+top: 20px;
+left: 20px;
+font-size: 20px;
+color: white;
+}
+</style>
 </head>
 <body>
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+<div id="status">Игра окончена</div>
+<div id="score">Очки: 0</div>
 
-    <h1>🚀 Космическая Ракета</h1>
-    <p id="score">Очки: 0</p>
-    <canvas id="gameCanvas"></canvas>
-    <div id="status">💥 Вы врезались!</div>
+<script>
+// ----------------- Константы -----------------
+const STAR_SPEED = 4;
+const SPAWN_INTERVAL = 500;
+const ROCKET_START_Y = 500;
 
-    <!-- Telegram WebApp SDK -->
-    <script src="https://telegram.org/js/telegram-web-app.js  "></script>
-    <script>
-        // Инициализация Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        tg.ready();
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-        // Настройка canvas
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
+const statusElement = document.getElementById("status");
+const scoreElement = document.getElementById("score");
 
-        function resizeCanvas() {
-            const width = Math.min(400, window.innerWidth - 20);
-            const height = Math.min(600, window.innerHeight - 60);
-            canvas.width = width;
-            canvas.height = height;
-        }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
+// ----------------- Классы объектов -----------------
+class Rocket {
+constructor(img) {
+this.img = img;
+this.x = canvas.width / 2 - 20;
+this.y = ROCKET_START_Y;
+this.width = 40;
+this.height = 60;
+}
 
-        // Элементы
-        const scoreElement = document.getElementById("score");
-        const statusElement = document.getElementById("status");
+draw() {
+ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
+}
+}
 
-        // Объекты игры
-        let rocket = { x: 180, y: 500, width: 40, height: 60 };
-        let stars = [];
-        let meteors = [];
-        let particles = []; // частицы дыма
-        let score = 0;
-        let gameOver = false;
+class Star {
+constructor(img, x, size) {
+this.img = img;
+this.x = x;
+this.y = 0;
+this.size = size;
+}
 
-        // Наклон носа
-        let rocketTilt = 0;
-        let targetTilt = 0;
-        const maxTilt = 0.2;
-        const returnSpeed = 0.08;
+update() {
+this.y += STAR_SPEED;
+}
 
-        // Управление: touch
-        let touchStartX = null;
+draw() {
+const now = Date.now();
+const flicker = 0.7 + 0.3 * Math.sin(now * 0.007 + this.x * 0.1);
+ctx.globalAlpha = flicker;
+ctx.shadowBlur = 15;
+ctx.shadowColor = `rgba(255, 255, 100, ${flicker})`;
+ctx.drawImage(this.img, this.x, this.y, this.size, this.size);
+}
 
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            touchStartX = touch.clientX;
-        }, { passive: false });
+collidesWith(rocket) {
+return (
+this.x < rocket.x + rocket.width &&
+this.x + this.size > rocket.x &&
+this.y < rocket.y + rocket.height &&
+this.y + this.size > rocket.y
+);
+}
+}
 
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (!touchStartX || gameOver) return;
-            const touch = e.touches[0];
-            const dx = touch.clientX - touchStartX;
+class Meteor {
+constructor(img, x, size, speed) {
+this.img = img;
+this.x = x;
+this.y = 0;
+this.size = size;
+this.speed = speed;
+}
 
-            const speed = dx * 1.0;
-            rocket.x += speed;
-            rocket.x = Math.max(0, Math.min(canvas.width - rocket.width, rocket.x));
+update() {
+this.y += this.speed;
+}
 
-            // Наклон носа
-            if (speed < 0) {
-                targetTilt = -maxTilt;
-            } else if (speed > 0) {
-                targetTilt = maxTilt;
-            }
+draw() {
+ctx.drawImage(this.img, this.x, this.y, this.size, this.size);
+}
 
-            touchStartX = touch.clientX;
-        }, { passive: false });
+collidesWith(rocket) {
+return (
+this.x < rocket.x + rocket.width &&
+this.x + this.size > rocket.x &&
+this.y < rocket.y + rocket.height &&
+this.y + this.size > rocket.y
+);
+}
+}
 
-        canvas.addEventListener('touchend', () => {
-            touchStartX = null;
-            targetTilt = 0;
-        });
+// ----------------- Класс Game -----------------
+class Game {
+constructor(images) {
+this.bgImg = images.bg;
+this.rocketImg = images.rocket;
+this.meteorImg = images.meteor;
+this.starImg = images.star;
 
-        // Загрузка изображений
-        const bgImg = new Image();
-        bgImg.src = "background.png";
+this.rocket = new Rocket(this.rocketImg);
+this.stars = [];
+this.meteors = [];
+this.score = 0;
+this.gameOver = false;
 
-        const rocketImg = new Image();
-        rocketImg.src = "rocket.png";
+this.lastFrame = 0;
+this.lastSpawn = 0;
+}
 
-        const meteorImg = new Image();
-        meteorImg.src = "meteor.png";
+start() {
+this.rocket = new Rocket(this.rocketImg);
+this.stars = [];
+this.meteors = [];
+this.score = 0;
+this.gameOver = false;
+statusElement.style.display = "none";
+scoreElement.innerText = "Очки: 0";
 
-        const starImg = new Image();
-        starImg.src = "stars.png";
+this.lastFrame = performance.now();
+this.lastSpawn = this.lastFrame;
+requestAnimationFrame(this.loop.bind(this));
+}
 
-        // Создание частицы дыма (из сопла)
-        function createParticle() {
-            const cx = rocket.x + rocket.width / 2;
-            const cy = rocket.y + rocket.height; // сопло — низ ракеты
-            return {
-                x: cx + (Math.random() - 0.5) * 20, // немного разброс
-                y: cy,
-                vx: (Math.random() - 0.5) * 1,
-                vy: 1 + Math.random() * 2,
-                life: 30 + Math.random() * 20,
-                size: 2 + Math.random() * 3,
-                alpha: 1
-            };
-        }
+end() {
+this.gameOver = true;
+statusElement.style.display = "block";
 
-        // Отрисовка частиц
-        function drawParticles() {
-            particles.forEach((p, i) => {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life--;
-                p.alpha = p.life / 50;
-                p.size *= 0.96;
+if (window.tg && tg.isVersionAtLeast("6.1")) {
+tg.showPopup({
+title: "Игра окончена",
+message: `Вы набрали ${this.score} очков!`,
+buttons: [{ type: "default", text: "Начать снова" }]
+}, () => this.start());
+} else {
+setTimeout(() => {
+if (confirm(`Игра окончена! Очки: ${this.score}\nХочешь начать снова?`)) {
+this.start();
+}
+}, 500);
+}
+}
 
-                if (p.life <= 0 || p.size < 0.3) {
-                    particles.splice(i, 1);
-                    return;
-                }
+loop(timestamp) {
+if (this.gameOver) return;
 
-                ctx.globalAlpha = p.alpha;
-                ctx.fillStyle = '#888'; // серый дым
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
-            ctx.globalAlpha = 1.0;
-        }
+this.update(timestamp);
+this.draw();
 
-        // Отрисовка ракеты с наклоном
-        function drawRocket() {
-            // Плавный наклон
-            if (Math.abs(targetTilt - rocketTilt) > 0.01) {
-                rocketTilt += (targetTilt - rocketTilt) * 0.2;
-            } else {
-                rocketTilt = targetTilt;
-            }
+requestAnimationFrame(this.loop.bind(this));
+}
 
-            const cx = rocket.x + rocket.width / 2;
-            const cy = rocket.y + rocket.height / 2;
+update(timestamp) {
+const delta = timestamp - this.lastFrame;
+this.lastFrame = timestamp;
 
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(rocketTilt);
-            ctx.translate(-cx, -cy);
-            ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.width, rocket.height);
-            ctx.restore();
+if (timestamp - this.lastSpawn > SPAWN_INTERVAL) {
+this.spawnObject();
+this.lastSpawn = timestamp;
+}
 
-            // Генерация дыма только при движении
-            if (Math.abs(targetTilt) > 0.05 && !gameOver) {
-                if (Math.random() < 0.8) {
-                    particles.push(createParticle());
-                }
-            }
-        }
+// Звёзды
+for (let i = this.stars.length - 1; i >= 0; i--) {
+const star = this.stars[i];
+star.update();
+if (star.collidesWith(this.rocket)) {
+this.stars.splice(i, 1);
+this.score++;
+scoreElement.innerText = "Очки: " + this.score;
+continue;
+}
+if (star.y > canvas.height) this.stars.splice(i, 1);
+}
 
-        // Создание звёзд и метеоритов
-        function createStarOrMeteor() {
-            if (Math.random() < 0.7) {
-                stars.push({
-                    x: Math.random() * (canvas.width - 30),
-                    y: -20,
-                    size: 25 + Math.random() * 6,
-                });
-            } else {
-                meteors.push({
-                    x: Math.random() * (canvas.width - 30),
-                    y: -20,
-                    size: 15 + Math.random() * 10,
-                    angle: 0
-                });
-            }
-        }
+// Метеоры
+for (let i = this.meteors.length - 1; i >= 0; i--) {
+const meteor = this.meteors[i];
+meteor.update();
+if (meteor.collidesWith(this.rocket)) {
+if (navigator.vibrate && !this.gameOver) {
+try { navigator.vibrate([100]); } catch {}
+}
+this.end();
+}
+if (meteor.y > canvas.height) this.meteors.splice(i, 1);
+}
+}
 
-        // Отрисовка метеоритов
-        function drawMeteors() {
-            meteors.forEach((meteor, i) => {
-                meteor.y += 3;
-                meteor.angle += 0.1;
+draw() {
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+ctx.drawImage(this.bgImg, 0, 0, canvas.width, canvas.height);
 
-                const size = 40;
-                ctx.save();
-                ctx.translate(meteor.x + size / 2, meteor.y + size / 2);
-                ctx.rotate(meteor.angle);
-                ctx.translate(-size / 2, -size / 2);
-                ctx.drawImage(meteorImg, 0, 0, size, size);
-                ctx.restore();
+this.rocket.draw();
+this.stars.forEach(s => s.draw());
+this.meteors.forEach(m => m.draw());
 
-                if (
-                    meteor.x < rocket.x + rocket.width &&
-                    meteor.x + size > rocket.x &&
-                    meteor.y < rocket.y + rocket.height &&
-                    meteor.y + size > rocket.y
-                ) {
-                    // 🔊 Вибрация при столкновении
-                    if (navigator.vibrate && !gameOver) {
-                        navigator.vibrate([100]); // короткая вспышка
-                    }
-                    endGame();
-                }
-            });
+ctx.globalAlpha = 1.0;
+ctx.shadowBlur = 0;
+}
 
-            meteors = meteors.filter(m => m.y < canvas.height);
-        }
+spawnObject() {
+const isStar = Math.random() > 0.5;
+const x = Math.random() * (canvas.width - 30);
+const size = 20 + Math.random() * 20;
 
-        // Отрисовка звёзд
-        function drawStars() {
-            stars.forEach((star, i) => {
-                star.y += 4;
-                const size = star.size;
+if (isStar) {
+this.stars.push(new Star(this.starImg, x, size));
+} else {
+const speed = 3 + Math.random() * 3;
+this.meteors.push(new Meteor(this.meteorImg, x, size, speed));
+}
+}
+}
 
-                const now = Date.now();
-                const flicker = 0.7 + 0.3 * Math.sin(now * 0.007 + star.x * 0.1);
-                ctx.globalAlpha = flicker;
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = `rgba(255, 255, 100, ${flicker})`;
-                ctx.drawImage(starImg, star.x, star.y, size, size);
-                ctx.shadowBlur = 0;
-                ctx.globalAlpha = 1.0;
+// ----------------- Загрузка картинок -----------------
+function loadImages(sources) {
+return Promise.all(
+Object.entries(sources).map(([key, src]) => new Promise(resolve => {
+const img = new Image();
+img.onload = () => resolve([key, img]);
+img.src = src;
+}))
+).then(entries => Object.fromEntries(entries));
+}
 
-                if (
-                    star.x < rocket.x + rocket.width &&
-                    star.x + size > rocket.x &&
-                    star.y < rocket.y + rocket.height &&
-                    star.y + size > rocket.y
-                ) {
-                    stars.splice(i, 1);
-                    score++;
-                    scoreElement.innerText = "Очки: " + score;
-                }
-            });
-
-            stars = stars.filter(s => s.y < canvas.height);
-        }
-
-        // Основной цикл
-        function update() {
-            if (gameOver) return;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-
-            drawRocket();
-            drawParticles(); // дым
-            drawStars();
-            drawMeteors();
-
-            requestAnimationFrame(update);
-        }
-
-        // Конец игры
-        function endGame() {
-            gameOver = true;
-            statusElement.style.display = "block";
-
-            if (tg.isVersionAtLeast("6.1")) {
-                tg.showPopup({
-                    title: "Игра окончена",
-                    message: `Вы набрали ${score} очков!`,
-                    buttons: [{ type: "default", text: "Начать снова" }]
-                }, () => startGame());
-            } else {
-                setTimeout(() => {
-                    if (confirm(`Игра окончена! Очки: ${score}\nХочешь начать снова?`)) {
-                        startGame();
-                    }
-                }, 500);
-            }
-        }
-
-        // Начало игры
-        function startGame() {
-            rocket = { x: canvas.width / 2 - 20, y: 500, width: 40, height: 60 };
-            stars = [];
-            meteors = [];
-            particles = [];
-            score = 0;
-            gameOver = false;
-            rocketTilt = 0;
-            targetTilt = 0;
-            scoreElement.innerText = "Очки: 0";
-            statusElement.style.display = "none";
-            update();
-        }
-
-        // Генерация объектов
-        setInterval(() => {
-            if (!gameOver) createStarOrMeteor();
-        }, 500);
-
-        // Загрузка изображений
-        let loadedImages = 0;
-        const totalImages = 4;
-        function imageLoaded() {
-            loadedImages++;
-            if (loadedImages === totalImages) {
-                startGame();
-            }
-        }
-
-        bgImg.onload = imageLoaded;
-        rocketImg.onload = imageLoaded;
-        meteorImg.onload = imageLoaded;
-        starImg.onload = imageLoaded;
-
-        [bgImg, rocketImg, meteorImg, starImg].forEach(img => {
-            if (img.complete && !img.onload) imageLoaded();
-        });
-    </script>
+loadImages({
+bg: "bg.png",
+rocket: "rocket.png",
+meteor: "meteor.png",
+star: "star.png"
+}).then(images => {
+const game = new Game(images);
+game.start();
+});
+</script>
 </body>
 </html>
