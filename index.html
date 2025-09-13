@@ -4,111 +4,141 @@
 <meta charset="UTF-8">
 <title>Rocket Game</title>
 <style>
-body { margin:0; overflow:hidden; background:black; }
-#gameCanvas { display:block; margin:auto; }
-#score { position:absolute; top:20px; left:20px; color:white; font-size:20px; }
+  body { margin:0; overflow:hidden; background:black; }
+  #gameCanvas { display:block; margin:auto; }
+  #score { position:absolute; top:20px; left:20px; color:white; font-size:20px; }
+  #leaderboard {
+    position:absolute; top:50px; right:20px;
+    color:white; background:rgba(0,0,0,0.5); padding:10px;
+    font-size:16px; max-width:150px;
+  }
+  #leaderboard ul { padding-left:20px; margin:0; }
 </style>
 </head>
 <body>
 <canvas id="gameCanvas" width="400" height="600"></canvas>
 <div id="score">Очки: 0</div>
+<div id="leaderboard">
+  🏆 Топ 5:
+  <ul id="topList"></ul>
+</div>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const scoreElement = document.getElementById("score");
+const topList = document.getElementById("topList");
 
+// Telegram WebApp
 const tg = window.Telegram.WebApp;
 tg.ready();
 
-let rocket = { x: 180, y: 500, width: 40, height: 60 };
-let stars = [], meteors = [], score = 0, gameOver = false;
+let rocket, stars, meteors, score, gameOver;
 
-// Простейшая генерация объектов
-function spawnObject() {
-    const x = Math.random() * (canvas.width - 30);
-    if (Math.random() > 0.5) stars.push({x, y:0, size:20+Math.random()*20});
-    else meteors.push({x, y:0, size:20+Math.random()*20, speed:3+Math.random()*3});
+// ------------------ Классы ------------------
+class Rocket {
+    constructor() { this.x = 180; this.y = 500; this.width = 40; this.height = 60; }
+    draw() { ctx.fillStyle="red"; ctx.fillRect(this.x,this.y,this.width,this.height); }
 }
 
-// Обновление и проверка столкновений
+class Star {
+    constructor() { this.x = Math.random()*(canvas.width-30); this.y=0; this.size=20+Math.random()*20; }
+    update() { this.y+=4; }
+    draw() { ctx.fillStyle="yellow"; ctx.fillRect(this.x,this.y,this.size,this.size); }
+    collides() { return this.x<rocket.x+rocket.width && this.x+this.size>rocket.x &&
+                     this.y<rocket.y+rocket.height && this.y+this.size>rocket.y; }
+}
+
+class Meteor {
+    constructor() { this.x = Math.random()*(canvas.width-30); this.y=0; this.size=20+Math.random()*20; this.speed=3+Math.random()*3; }
+    update() { this.y+=this.speed; }
+    draw() { ctx.fillStyle="gray"; ctx.fillRect(this.x,this.y,this.size,this.size); }
+    collides() { return this.x<rocket.x+rocket.width && this.x+this.size>rocket.x &&
+                     this.y<rocket.y+rocket.height && this.y+this.size>rocket.y; }
+}
+
+// ------------------ Игра ------------------
+function spawnObjects() {
+    if(Math.random()>0.5) stars.push(new Star());
+    else meteors.push(new Meteor());
+}
+
 function update() {
-    if (gameOver) return;
+    if(gameOver) return;
 
-    // Звёзды
-    for (let i=stars.length-1;i>=0;i--){
-        stars[i].y += 4;
-        if (stars[i].x < rocket.x + rocket.width && stars[i].x+stars[i].size>rocket.x &&
-            stars[i].y<rocket.y+rocket.height && stars[i].y+stars[i].size>rocket.y){
-            stars.splice(i,1);
-            score++; scoreElement.innerText="Очки: "+score;
-        }
-        else if (stars[i].y>canvas.height) stars.splice(i,1);
-    }
-
-    // Метеоры
-    for (let i=meteors.length-1;i>=0;i--){
-        meteors[i].y += meteors[i].speed;
-        if (meteors[i].x < rocket.x + rocket.width && meteors[i].x+meteors[i].size>rocket.x &&
-            meteors[i].y<rocket.y+rocket.height && meteors[i].y+meteors[i].size>rocket.y){
-            endGame();
-        }
-        else if (meteors[i].y>canvas.height) meteors.splice(i,1);
-    }
+    stars.forEach((s,i)=>{ s.update(); if(s.collides()){ stars.splice(i,1); score++; scoreElement.innerText="Очки: "+score; } if(s.y>canvas.height) stars.splice(i,1); });
+    meteors.forEach((m,i)=>{ m.update(); if(m.collides()) endGame(); if(m.y>canvas.height) meteors.splice(i,1); });
 }
 
-// Отрисовка (очень простой пример)
 function draw() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle="red"; ctx.fillRect(rocket.x,rocket.y,rocket.width,rocket.height);
-    ctx.fillStyle="yellow";
-    stars.forEach(s=>ctx.fillRect(s.x,s.y,s.size,s.size));
-    ctx.fillStyle="gray";
-    meteors.forEach(m=>ctx.fillRect(m.x,m.y,m.size,m.size));
+    rocket.draw();
+    stars.forEach(s=>s.draw());
+    meteors.forEach(m=>m.draw());
 }
 
 function gameLoop() {
-    if (gameOver) return;
+    if(gameOver) return;
     update(); draw();
     requestAnimationFrame(gameLoop);
 }
 
-// Начало игры
 function startGame() {
-    rocket = { x: 180, y: 500, width: 40, height: 60 };
-    stars = []; meteors = []; score=0; gameOver=false;
+    rocket = new Rocket();
+    stars = [];
+    meteors = [];
+    score = 0;
+    gameOver = false;
     scoreElement.innerText="Очки: 0";
     requestAnimationFrame(gameLoop);
 }
 
-// Завершение игры
-function endGame() {
-    gameOver = true;
-
-    // Отправка очков на сервер
-    fetch("https://your-server.com/score",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-            score: score,
-            userId: tg.initDataUnsafe.user.id,
-            chatId: tg.initDataUnsafe.chat?.id,
-            messageId: tg.initDataUnsafe.start_param
-        })
-    }).then(res=>res.json()).then(data=>{
-        console.log(data.ok ? "Результат отправлен!" : "Ошибка при отправке");
-    }).catch(err=>console.error(err));
-
-    tg.showPopup({
-        title:"Игра окончена",
-        message:`Вы набрали ${score} очков!`,
-        buttons:[{type:"default", text:"Начать снова"}]
-    }, ()=>startGame());
+// ------------------ Отправка очков на сервер ------------------
+async function sendScore() {
+    try{
+        await fetch("https://your-server.com/score",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({
+                score: score,
+                userId: tg.initDataUnsafe.user.id,
+                chatId: tg.initDataUnsafe.chat?.id,
+                messageId: tg.initDataUnsafe.start_param
+            })
+        });
+    }catch(e){ console.error(e); }
 }
 
-// Генерация объектов каждые 500 мс
-setInterval(()=>{if(!gameOver) spawnObject()},500);
+// ------------------ Конец игры ------------------
+function endGame() {
+    gameOver = true;
+    sendScore();
+    tg.showPopup({ title:"Игра окончена", message:`Вы набрали ${score} очков!`,
+        buttons:[{type:"default", text:"Начать снова"}]}, ()=>startGame());
+}
 
+// ------------------ Обновление таблицы лидеров ------------------
+async function updateLeaderboard(){
+    if(!tg.initDataUnsafe.user.id) return;
+    try{
+        const res = await fetch(`https://your-server.com/top5?userId=${tg.initDataUnsafe.user.id}&chatId=${tg.initDataUnsafe.chat?.id}&messageId=${tg.initDataUnsafe.start_param}`);
+        const data = await res.json();
+        if(data.ok){
+            topList.innerHTML="";
+            data.top5.forEach((p,i)=>{
+                const li = document.createElement("li");
+                li.textContent=`${i+1}. ${p.name} — ${p.score}`;
+                topList.appendChild(li);
+            });
+        }
+    }catch(e){ console.error(e); }
+}
+
+// ------------------ Таймеры ------------------
+setInterval(()=>{if(!gameOver) spawnObjects()},500);
+setInterval(()=>{updateLeaderboard()},5000);
+
+// ------------------ Старт ------------------
 startGame();
 </script>
 </body>
